@@ -1,0 +1,148 @@
+---
+title: "William_Arnost_LiveAssignment3"
+author: "William Arnost"
+date: "May 27, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Question 1: GitHub Cloning (20 points): Using Git, clone the following GitHub repository to your local machine: https://github.com/caesar0301/awesome-public-datasets.  
+
+## Question 2:	Data Summary (20 points): From this aforementioned cloned repo, please extract titanic.csv.zip.  To be clear, this does not have to be done in Git or command line.  
+a.	In R, please read in titanic.csv via either read.table() or read.csv(), assigning it to df.  This dataset follows the passengers aboard the Titanic, including their fees paid, rooms rented, and survivorship status.  
+```{r}
+setwd("C:/Users/William/OneDrive/MSDS_6306_DoingDataScience/MSDS_6306_Homework/LiveAssignment3/")
+library(tidyverse)
+df <- read_csv("awesome-public-datasets-master/Datasets/titanic.csv")
+```
+
+b.	Output the respective count of females and males aboard the Titanic. Plot the frequency of females and males.  Be sure to give an accurate title and label the axes.  
+```{r}
+table(df$Sex)
+p <- ggplot(df,aes(Sex)) + geom_bar() + labs(title = "Female vs. Male Passengers aboard the Titanic")
+p
+```
+
+c.	Please use one apply function (to review: swirl() modules 11, 12) to output the means of Age, Fare, and Survival.  Make sure the output is a real number for all three means.  
+```{r}
+apply(df[,c("Age","Fare", "Survived")],2,mean,na.rm=TRUE)
+
+```
+The average age was 30, the Average fare was $32, and less than half the passengers survived. There were NA values for age, I used na.rm=TRUE to exlude them from the mean age calculation.
+
+## Question 3:	Function Building (30 points): You research sleep and just got your first data set.  Later, you’ll have another dataset with the same column names, so you want to create a helper function that you can analyze this dataset and the next.  Load sleep_data_01.csv (found at http://talklab.psy.gla.ac.uk/L1_labs/lab_1/homework/index.html).  Questions 3A through 3D should be answered in function(x){}.  3E can be outside of the function.  
+```{r}
+sleep <- read_csv("sleep_data_01.csv")
+```
+
+a.	Create objects for the median Age, the minimum and maximum Duration of sleep, and the mean and standard deviation of the Rosenberg Self Esteem scale (RSES).  You may need to specify a few options like in Problem 2 and live session.  
+```{r}
+analyze_sleep <- function(x) {
+  med_age <- median(x$Age, na.rm = TRUE) 
+  min_sleep_dur <- min(x$Duration,na.rm = TRUE)
+  max_sleep_dur <- max(x$Duration,na.rm = TRUE)
+  mean_RSES <- mean(x$RSES,na.rm = TRUE)
+  sd_RSES <- sd(x$RSES,na.rm = TRUE)
+}
+
+```
+
+b.	Create a data.frame object called report: it should consist of the median age, the RSES mean and standard deviation respectively divided by five (since there are five questions and these scores are summed), and the range of Duration (the statistical definition of range; it should be a single number.)  
+```{r}
+analyze_sleep <- function(x) {
+  med_age <- median(x$Age, na.rm = TRUE) 
+  min_sleep_dur <- min(x$Duration,na.rm = TRUE)
+  max_sleep_dur <- max(x$Duration,na.rm = TRUE)
+  mean_RSES <- mean(x$RSES,na.rm = TRUE)
+  sd_RSES <- sd(x$RSES,na.rm = TRUE)
+  dur_range <- max_sleep_dur-min_sleep_dur
+  report <- as.data.frame(cbind(med_age, mean_RSES/5, sd_RSES/5, dur_range))
+}
+```
+
+c.	Change the column names of this data.frame to MedianAge, SelfEsteem, SE_SD, and DurationRange.  
+```{r}
+analyze_sleep <- function(x) {
+  med_age <- median(x$Age, na.rm = TRUE) 
+  min_sleep_dur <- min(x$Duration,na.rm = TRUE)
+  max_sleep_dur <- max(x$Duration,na.rm = TRUE)
+  mean_RSES <- mean(x$RSES,na.rm = TRUE)
+  sd_RSES <- sd(x$RSES,na.rm = TRUE)
+  dur_range <- max_sleep_dur-min_sleep_dur
+  report <- as.data.frame(cbind(med_age, mean_RSES/5, sd_RSES/5, dur_range))
+  names(report) <- c("MedianAge", "SelfEsteem", "SE_SD", "DurationRange")
+}
+```
+d.	Round the report to at most 2 digits: leave this as the closing line to the function.  
+```{r}
+analyze_sleep <- function(x) {
+  med_age <- median(x$Age, na.rm = TRUE) 
+  min_sleep_dur <- min(x$Duration,na.rm = TRUE)
+  max_sleep_dur <- max(x$Duration,na.rm = TRUE)
+  mean_RSES <- mean(x$RSES,na.rm = TRUE)
+  sd_RSES <- sd(x$RSES,na.rm = TRUE)
+  dur_range <- max_sleep_dur-min_sleep_dur
+  report <- as.data.frame(cbind(med_age, mean_RSES/5, sd_RSES/5, dur_range))
+  names(report) <- c("MedianAge", "SelfEsteem", "SE_SD", "DurationRange")
+  report <- round(report,2)
+  report
+}
+```
+e.	Finally, run the function on your sleep data to show the output.  
+```{r}
+analyze_sleep(sleep)
+```
+
+
+
+## Question 4:	FiveThirtyEight Data (30 points): Navigate on GitHub to https://github.com/rudeboybert/fivethirtyeight and read README.md. It will include everything you need.  
+a.	Install the fivethirtyeight package.  
+```{r}
+## install.packages("fivethirtyeight")
+## Load package
+library(fivethirtyeight)
+```
+
+b.	In the listing of Data sets in package ‘fivethirtyeight,’ assign the 22nd data set to an object ‘df.’  
+```{r}
+data("college_recent_grads")
+df <- college_recent_grads
+```
+
+c.	Use a more detailed list of the data sets to write out the URL in a comment to the related news story.  
+```{r}
+help("college_recent_grads")
+```
+The raw data behind the story "The Economic Guide To Picking A College Major" https://fivethirtyeight.com/features/the-economic-guide-to-picking-a-college-major/.  
+
+d.	Using R command(s), give the dimensions and column names of this data frame.  
+The str command gives both these items
+```{r}
+str(df)
+```
+
+
+##Question 5:	Data Summary (30 points): Use your newly assigned data frame from question 4 for this question.  
+a.	Write an R command that gives you the column names of the data frame.  Right after that, write one that counts the number of columns but not rows.  Hint: The number should match one of your numbers in Question 1d for dimensions.  
+Column Names:
+```{r}
+names(df)
+```
+
+Number of Columns:
+```{r}
+length((names(df)))
+```
+
+b.	Generate a count of each unique major_category in the data frame.  I recommend using libraries to help.  To be clear, this should look like a matrix or data frame containing the major_category and the frequency it occurs in the dataset.  Assign it to major_count.  
+c.	To make things easier to read, put par(las=2) before your plot to make the text perpendicular to the axis.  Make a barplot of major_count.  Make sure to label the title with something informative (check the vignette if you need), label the x and y axis, and make it any color other than grey.  Assign the major_category labels to their respective bar.  Flip the barplot horizontally so that bars extend to the right, not upward.  All of these options can be done in a single pass of barplot().   Note: It’s okay if it’s wider than the preview pane.  
+d.	Write the fivethirtyeight data to a csv file.  Make sure that it does not have row labels.  
+
+## Question 6:	Codebook (30 points):  
+a.	Start a new repository on GitHub for your SMU MSDS homework.  On your local device, make sure there is a directory for Homework at the minimum; you are welcome to add whatever you would like to this repo in addition to your requirements here.  
+b.	Create a README.md file which explains the purpose of the repository, the topics included, the sources for the material you post, and contact information in case of questions. Remember, the one in the root directory should be general.  You are welcome to make short READMEs for each assignment individually in other folders.  
+c.	In one (or more) of the nested directories, post your RMarkdown script, HTML file, and data from ‘fivethirtyeight.’  Make sure that in your README or elsewhere that you credit fivethirtyeight in some way.  
+d.	In your RMarkdown script, please provide the link to this GitHub so the grader can see it.  
+
