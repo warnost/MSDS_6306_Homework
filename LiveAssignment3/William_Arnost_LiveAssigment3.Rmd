@@ -34,7 +34,7 @@ The average age was 30, the Average fare was $32, and less than half the passeng
 
 ## Question 3:	Function Building (30 points): You research sleep and just got your first data set.  Later, you’ll have another dataset with the same column names, so you want to create a helper function that you can analyze this dataset and the next.  Load sleep_data_01.csv (found at http://talklab.psy.gla.ac.uk/L1_labs/lab_1/homework/index.html).  Questions 3A through 3D should be answered in function(x){}.  3E can be outside of the function.  
 ```{r}
-sleep <- read_csv("sleep_data_01.csv")
+sleep <- read_csv("data/sleep_data_01.csv")
 ```
 
 a.	Create objects for the median Age, the minimum and maximum Duration of sleep, and the mean and standard deviation of the Rosenberg Self Esteem scale (RSES).  You may need to specify a few options like in Problem 2 and live session.  
@@ -126,6 +126,7 @@ str(df)
 
 ##Question 5:	Data Summary (30 points): Use your newly assigned data frame from question 4 for this question.  
 a.	Write an R command that gives you the column names of the data frame.  Right after that, write one that counts the number of columns but not rows.  Hint: The number should match one of your numbers in Question 1d for dimensions.  
+
 Column Names:
 ```{r}
 names(df)
@@ -137,12 +138,35 @@ length((names(df)))
 ```
 
 b.	Generate a count of each unique major_category in the data frame.  I recommend using libraries to help.  To be clear, this should look like a matrix or data frame containing the major_category and the frequency it occurs in the dataset.  Assign it to major_count.  
+```{r}
+##Loaded previously but lets do it again for clarity
+library(tidyverse)
+major_count <- df %>% group_by(major_category) %>% tally()
+names(major_count) <- c("major_category","count")
+```
+
 c.	To make things easier to read, put par(las=2) before your plot to make the text perpendicular to the axis.  Make a barplot of major_count.  Make sure to label the title with something informative (check the vignette if you need), label the x and y axis, and make it any color other than grey.  Assign the major_category labels to their respective bar.  Flip the barplot horizontally so that bars extend to the right, not upward.  All of these options can be done in a single pass of barplot().   Note: It’s okay if it’s wider than the preview pane.  
+```{r}
+## In keeping with my previous work using tidverse I am using the ggplot2 package
+p <- ggplot(major_count,aes(x=major_category, y=count)) + 
+  geom_bar(stat = "identity",fill="dark green") + 
+  labs(title="Count of college majors by major category of recent college graduates (2014)", y="Count", x="Major Category") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+p
+```
+
 d.	Write the fivethirtyeight data to a csv file.  Make sure that it does not have row labels.  
+```{r}
+##write_csv does not do row names by default, unlike write.csv. There you would need to use the option row.names = FALSE
+write_csv(df, "data/college_recent_grads.csv")
+```
+
 
 ## Question 6:	Codebook (30 points):  
 a.	Start a new repository on GitHub for your SMU MSDS homework.  On your local device, make sure there is a directory for Homework at the minimum; you are welcome to add whatever you would like to this repo in addition to your requirements here.  
 b.	Create a README.md file which explains the purpose of the repository, the topics included, the sources for the material you post, and contact information in case of questions. Remember, the one in the root directory should be general.  You are welcome to make short READMEs for each assignment individually in other folders.  
 c.	In one (or more) of the nested directories, post your RMarkdown script, HTML file, and data from ‘fivethirtyeight.’  Make sure that in your README or elsewhere that you credit fivethirtyeight in some way.  
 d.	In your RMarkdown script, please provide the link to this GitHub so the grader can see it.  
+
+My repository can be found here: https://github.com/warnost/MSDS_6306_Homework.git
 
