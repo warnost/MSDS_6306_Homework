@@ -1,0 +1,40 @@
+---
+title: "Quandl API"
+author: "William Arnost"
+date: "May 29, 2019"
+output: ioslides_presentation
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Quandl
+
+The Quandl API allows access to financial data from many different sources. You can check out their website here: https://www.quandl.com/tools/r
+
+##GDP Data using Quandl
+Lets pull in US GDP Data using the API. This is sourced from the Federal Reserve.
+```{r, message=FALSE,warning=FALSE}
+library(Quandl)
+data <- Quandl("FRED/GDP", type="raw")
+str(data)
+head(data)
+```
+
+##Transformations
+We can also apply transformations to the data, in this case lets just look at the absolute difference between quarters, or how much GDP increased/decreased from the prior period. We can also filter the time period, collapse time periods, and specify other transformations. 
+```{r}
+data_diff <- Quandl("FRED/GDP", transform="diff")
+head(data_diff)
+```
+
+##Plot GDP
+For fun lets look at a plot of GDP.
+```{r,echo=FALSE}
+library(ggplot2)
+
+ggplot(data, aes(x=Date, y=Value)) + geom_line() + 
+  labs(title="US GDP 1947-Present, Billions of Dollars", x="Year", y="")
+```
+
