@@ -1,0 +1,139 @@
+---
+title: "LiveAssignment4"
+author: "William Arnost"
+date: "June 3, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 1. Harry Potter Cast (50%)  
+There is a lot of text associated with this question. We are scraping the cast list for Harry Potter 2 and cleaning the data. Here is a summary of the requrirements:  
+1. Scrape the data from the provided link and put it into a data table  
+2. Clean the table  
+    a. It should not have blank or otherwise useless data  
+    b. It should have intuitive column names (ideally 2 to start - Actor and Character)   
+    c. Fix the issue with Mr. Warwick's double character role  
+    d. remove the "Rest of cast..." observation that doesn't belong  
+3. Split the actor names into first name / surname  
+4. Display the first 10 rows of the cleaned data, 3 relevant columns only.  
+
+Here are the packages and URL I will be using
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(rvest)
+library(humaniformat)
+library(stringi)
+
+url<-"https://www.imdb.com/title/tt1201607/fullcredits?ref_=tt_ql_1"
+```
+
+Here I am extracting the table from the html, checking the values, and doing some cleaning
+```{r}
+## Read the html, extract the table nodes, then the specific table of interest
+cast_list <- read_html(url) %>% html_nodes(.,"table") %>% html_table %>%.[[3]]
+
+##Take a peek at the data
+str(cast_list)
+
+## Make sure X1 and X3 have no meaningful data
+table(cast_list$X1)
+table(cast_list$X3)
+
+## Get rid of X1 and X3
+cast_list$X1 <- NULL
+cast_list$X3 <- NULL
+
+## Assign meaningful names
+names(cast_list) <- c("Actor","Character")
+
+##Remove junk rows and remove extra spaces and \n from Character field
+cast_list_filtered <- cast_list %>% filter(Actor != "",Actor !="Rest of cast listed alphabetically:")
+cast_list_filtered$Character <- str_squish(cast_list_filtered$Character)
+str(cast_list_filtered)
+head(cast_list_filtered,10)
+```
+
+Names are super tricky. I am going to use a parse function from the humaniformat package. It doesn't handle accents well so I need to remove those, I hope no one is offended.
+```{r}
+## Removing Accents, then parsing names
+no_accents <- stri_trans_general(cast_list_filtered$Actor,"Latin-ASCII")
+parsed_names <- parse_names(no_accents)
+
+## If there is a middle name, combine with the first name. 
+firstName <- ifelse(is.na(parsed_names$middle_name),
+                    parsed_names$first_name,
+                    paste(parsed_names$first_name,parsed_names$middle_name)
+                    )
+lastName <- parsed_names$last_name
+
+## Add the clean names to the previous data frame
+cast_list_addNames <- cast_list_filtered %>% add_column(FirstName = firstName, Surname = lastName)
+head(cast_list_addNames)
+```
+
+Homenum revelio. Here is my cleaned data.
+```{r}
+cast_list_final <- cast_list_addNames %>% select(FirstName, Surname, Character)
+head(cast_list_final,10)
+```
+
+
+	
+#	2. SportsBall (50%)  
+
+There is a lot of text associated with this question. We are scraping the shooting statistics for the San Antonio Spurs and cleaning the data. Here is a summary of the requrirements:  
+1. Scrape the shooting statistics table for the San Antonio Spurs  
+2. Clean the table so it shows one row per player. Make sure to avoid blank data, extra column names, and get rid of the total row.  
+3. Split the player name into name and position  
+4. verify numeric columns are numeric  
+5. Create a colorful bar chart that shows the Field Goals Percentage Per Game for each person.   
+    a. Informative Title, centered  
+    b. Relevant x and y axis labels (not simply variables names!)  
+    c. Human-readable axes with no overlap  
+    d. Color the columns by the team member's position  
+  
+First step, get the html data, parse our the tables and get them into data frames.
+```{r}
+url <- "http://www.espn.com/nba/team/stats/_/name/sa/san-antonio-spurs"
+
+## Read the html, get the table nodes, put the data into tables.
+html_tables <- read_html(url) %>% html_nodes(.,"table") %>% html_table(., fill = TRUE)
+
+## Extract the desired info
+stats <- data.frame(html_tables[8])
+players <- data.frame(html_tables[6])
+```
+
+Now lets combine the Stats and Players table, then separate name and position
+```{r}
+names(players) <- "Player"
+shooting_stats <- cbind(players,stats) %>% filter(Player != "Total")
+
+## This removes the last word from the name, getting rid of position
+shooting_stats$Name = word(shooting_stats$Player,1,-2)
+
+## This grabs the last word, which is the position
+shooting_stats$Position = word(shooting_stats$Player,-1,-1)
+
+## Reordering the columns
+shooting_stats_final <- shooting_stats %>% select(Name,Position,2:14)
+str(shooting_stats_final)
+```
+
+Notice in the previous table that str shows us the numeric columns are indeed numeric. Now lets make our colorful graph. I have rearranged the names to be in descending order by field goal percentage. All positions are represented in the top 5 so it seems like you can score from any position, at least for the Spurs.
+```{r}
+ggplot(shooting_stats_final,aes(x=reorder(Name,FG.), y=FG., fill=Position)) + 
+  geom_bar(stat = "identity") + 
+  coord_flip() + 
+  ggtitle("Field Goals Percentage Per Game for the San Antonio Spurs") + 
+  ylab("Field Goal Percentage Per Game") + 
+  xlab("Player Name") +
+  theme(plot.title = element_text(hjust = 0.5),axis.title.y=element_text(angle=0,vjust=1)) 
+```
+
+
+  
+  
