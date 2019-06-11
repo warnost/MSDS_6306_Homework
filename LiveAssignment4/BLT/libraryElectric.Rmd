@@ -1,0 +1,28 @@
+---
+title: "Unit5 BLT"
+author: "William Arnost"
+date: "June 5, 2019"
+output: word_document
+---
+
+## Boston Library Electricity Usage  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Here is the code to get the data:  
+```{r, message=FALSE,warning=FALSE}
+library(tidyverse)
+
+url <- "https://data.boston.gov/dataset/652762e9-2556-47cd-8e80-798546992a57/resource/87c759ee-63b9-4aec-a00b-bba1672a20ef/download/tmp1i7dwh_5.csv"
+download.file(url, destfile = "libraryElectric.csv")
+libraryElectric<- read_csv("libraryElectric.csv")
+dim(libraryElectric)
+names(libraryElectric)
+sapply(libraryElectric,typeof)
+```
+
+1. Date of download is June 5, 2019  
+2. Dimensions are 281780 rows by 2 columns  
+3. Variables are DateTime_Measured and Total_Demand_KW  
+4. The variable types are date and double, the date registers as double with the typeof function  
