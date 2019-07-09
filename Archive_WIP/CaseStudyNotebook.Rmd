@@ -1,0 +1,64 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+setwd("C:/Users/William/OneDrive/MSDS_6306_DoingDataScience/MSDS_6306_Homework/CaseStudy01")
+library(tidyverse)
+library(DataExplorer)
+
+beers <- read_csv("Beers.csv")
+breweries <- read_csv("Breweries.csv")
+```
+
+```{r}
+head(beers, 20)
+head(breweries, 20)
+```
+
+```{r}
+plot_missing(beers)
+plot_missing(breweries)
+```
+Beers: 0.21% Missing in Style, 2.57% Missing ABV, 41.7% missing IBU
+Breweries: No Missing Data
+
+
+```{r}
+test <- sapply(beers, function(x) length(unique(x)))
+test
+test <- sapply(breweries, function(x) length(unique(x)))
+test
+test <- sapply(beers, function(x) sum(is.na(x)))
+test
+test <- sapply(breweries, function(x) sum(is.na(x)))
+test
+```
+```{r}
+ggplot(beers, aes(x=ABV)) + geom_histogram()
+ggplot(beers, aes(x=IBU)) + geom_histogram()
+ggplot(beers, aes(as.character(Ounces))) + geom_bar()
+ggplot(beers, aes(Style)) + geom_bar() + coord_flip()
+ggplot(breweries, aes(State)) + geom_bar() + coord_flip()
+table(breweries$State)
+```
+```{r}
+combined <- beers %>% left_join(breweries, by = c("Brewery_id" = "Brew_ID"))
+byState <- combined %>% select(State, Brewery_id, ABV, IBU) %>% group_by(State) %>% 
+  summarise(Brewery_Count = n(), Median_ABV = median(ABV,na.rm=TRUE), Median_IBU = median(IBU,na.rm=TRUE), Max_ABV = max(ABV,na.rm=TRUE), Max_IBU = max(IBU,na.rm=TRUE))
+```
+
+```{r}
+ggplot(byState,aes(x=reorder(State,Median_ABV), y=Median_ABV)) + geom_bar(stat="identity") + coord_flip()
+ggplot(byState,aes(x=reorder(State,Median_IBU), y=Median_IBU)) + geom_bar(stat="identity") + coord_flip()
+```
+
+
+```{r}
+summary(combined$ABV)
+```
+```{r}
+ggplot(combined,aes(x=IBU,y=ABV)) + geom_point() + geom_smooth(method=lm) 
+```
+

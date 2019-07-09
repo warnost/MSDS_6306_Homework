@@ -1,0 +1,205 @@
+---
+title: "Case Study 01"
+date: "`r Sys.Date()`"
+author: William Arnost and Meisam A. Mansor
+output:
+  rmdformats::readthedown:
+    highlight: kate
+    keep_md: yes
+    self_contained: no
+---
+
+
+```{r knitr_init, message=FALSE, echo=FALSE, cache=FALSE}
+library(knitr)
+library(rmdformats) ##This is for the knitr template readthedown
+library(tidyverse)  ##This has various data tools
+library(kableExtra) ##This is for table formatting
+library(Amelia)     ##This is for the missing map
+library(naniar)     ##This is for the pct missing plot
+library(maps)       ##Lets map this!
+library(mapproj)    ##More Mapping!
+library(ggthemes)   ##Theme the map!
+setwd("C:/Users/William/OneDrive/MSDS_6306_DoingDataScience/MSDS_6306_Homework/CaseStudy01")
+
+## Global options
+options(max.print="75")
+opts_chunk$set(echo=TRUE,
+	             cache=TRUE,
+               prompt=FALSE,
+               tidy=TRUE,
+               comment=NA,
+               message=FALSE,
+               warning=FALSE)
+opts_knit$set(width=75)
+```
+## Introduction: US Craft Beer Analysis  
+
+This is an analysis of US Craft Beer data. The final analysis is delivered in a 5 minute video whose audience would be someone at  the C-Suite level (see Codebook/Readme for video link). In particular, we addressed the analysis to Carlos Brito, the CEO of InBev / Anheuser Busch. The primary data source is two csv files, one on individual craft beers and another containing geographic information on craft breweries. The data was provided to us by Dr. Sadler.
+
+## 0. EDA
+```{r,message=FALSE}
+beers <- read_csv("Beers.csv")
+breweries <- read_csv("Breweries.csv")
+```
+
+We read in two datasets, one which has data on individual beers and another on the names and locations of breweries. 
+
+```{r}
+beers_unique_val_count <- sapply(beers, function(x) length(unique(x)))
+kable(beers_unique_val_count, col.names = c("Unique Count")) %>% kable_styling(full_width = FALSE)
+brew_unique_val_count <- sapply(breweries, function(x) length(unique(x)))
+kable(brew_unique_val_count, col.names = c("Unique Count")) %>% kable_styling(full_width = FALSE)
+```
+Here we are looking at a count of unique values in each column. We can see there are no duplicate beer or brewery IDs, so each row is related to a specific beer or brewery in their respective datasets. It will be good to look at some of the other variables in a bit. 
+
+```{r}
+beers_missing_count <- sapply(beers, function(x) sum(is.na(x)))
+beers_missing_count <- cbind(beers_missing_count,beers_missing_count/2410)
+kable(beers_missing_count, col.names = c("Missing Count","Missing Percent")) %>% kable_styling(full_width = FALSE)
+brew_missing_count <- sapply(breweries, function(x) sum(is.na(x)))
+kable(brew_missing_count, col.names = c("Missing Count")) %>% kable_styling(full_width = FALSE)
+```
+These tables present a missing count for each variable. The majority of the missing data is in the IBU variable. We will visualize the missing data later on. 
+
+Next we visualize some of the other variables.
+```{r,message=FALSE,warning=FALSE}
+ggplot(beers, aes(x=ABV)) + geom_histogram() + 
+  labs(title = "Distribution of Alcohol by Volume (ABV)", x="Alcohol by Volume", y="Number of Beers") +
+  theme(legend.position = "none",plot.title = element_text(hjust = 0.5),axis.title.y=element_text(angle=0,vjust=1))
+```
+
+This is the distribution of the Alcohol by Volume variable. It has a small right skew.
+```{r,message=FALSE,warning=FALSE}
+ggplot(beers, aes(x=IBU)) + geom_histogram() + 
+  labs(title = "Distribution of International Bitterness Unit (IBU)", x="Bitterness (IBU)", y="Number of Beers") +
+  theme(legend.position = "none",plot.title = element_text(hjust = 0.5),axis.title.y=element_text(angle=0,vjust=1))
+```
+
+The international bitterness unit has a much more skewed distribution. As a reminder it is also missing a lot of data.
+```{r}
+ggplot(beers, aes(as.character(Ounces))) + geom_bar() + 
+  labs(title = "Pour Size in Ounces", x="Size in Ounces (oz)", y="Number of Beers") +
+  theme(legend.position = "none",plot.title = element_text(hjust = 0.5),axis.title.y=element_text(angle=0,vjust=1))
+```
+There are 7 different sizes of beers in this data set, however most beers either come in 12oz or 16oz sizes. 
+
+```{r}
+styles <- beers %>% group_by(Style) %>% summarise(count=n()) %>% arrange(-count)
+ggplot(head(styles,10), aes(x=reorder(Style,count), y=count)) + geom_bar(stat="identity") + coord_flip() +
+  labs(title = "Top 10 Beer Styles", x="Style", y="Number of Beers") +
+  theme(legend.position = "none",plot.title = element_text(hjust = 0.5),axis.title.y=element_text(angle=0,vjust=1))
+```
+
+This plot shows the top 10 styles of beer from the dataset. IPA and Pale Ale are the the two strongest by a fair margin.
+```{r}
+brewByState <- breweries %>% group_by(State) %>% summarise(count=n()) %>% arrange(-count)
+brewByState
+```
+
+This is a count of breweries by state. Colorado and California lead with the most breweries
+
+```{r}
+combined <- beers %>% left_join(breweries, by = c("Brewery_id" = "Brew_ID")) %>% rename(Beer = "Name.x", Brewery = "Name.y")
+byState <- combined %>% select(State, Brewery_id, ABV, IBU) %>% group_by(State) %>% 
+summarise(Brewery_Count = n_distinct(Brewery_id), Median_ABV = median(ABV,na.rm=TRUE), Median_IBU = median(IBU,na.rm=TRUE), Max_ABV = max(ABV,na.rm=TRUE), Max_IBU = max(IBU,na.rm=TRUE))
+```
+Here we combine the data and create a state level summary to help with further analysis.
+
+## 1. How many breweries are present in each state?
+```{r}
+ggplot(head(brewByState,10), aes(x=reorder(State,count), y=count)) + geom_bar(stat = "identity") + coord_flip() +
+  labs(title = "Top 10 States with the Most Breweries", x="State", y="Number of Breweries") +
+  theme(legend.position = "none",plot.title = element_text(hjust = 0.5),axis.title.y=element_text(angle=0,vjust=1))
+```
+
+The chart above shows the number of breweries in each state. Colorado, California, Michigan, Oregon, and Texas have the most breweries.
+
+
+## 2. Merge beer data with the breweries data. Print the first 6 observations and the last six observations to check the merged file.
+```{r}
+## We did the merge in the EDA step
+head(combined,6)
+tail(combined,6)
+```
+The exact order depends on the procedure, sometimes it applies a sort which changes the top/bottom rows.
+
+## 3.   Report the number of NA's in each column.
+```{r}
+missmap(combined,y.at=c(1),y.labels = c(''))
+gg_miss_var(combined, show_pct=TRUE) + labs(title="Percent Missing by Data Field") +
+  theme(legend.position = "none",plot.title = element_text(hjust = 0.5),axis.title.y=element_text(angle=0,vjust=1))
+```
+
+These graphs show information about missing data. The first gives a way to compare across observations and variables where the missing data is. The red lines indicate missing. We can see most of the missing data is in the IBU variable, with a few missing in ABV. The second graph shows the percent of missing data in each column.
+
+## 4.   Compute the median alcohol content and international bitterness unit for each state. Plot a bar chart to compare.
+```{r,fig.height=6}
+ggplot(byState,aes(x=reorder(State,Median_ABV), y=Median_ABV)) + geom_bar(stat="identity") + 
+  coord_flip() +
+  labs(title = "Median Alchohol by Volume (ABV) by State", x="State", y="Median ABV") +
+  theme(legend.position = "none",plot.title = element_text(hjust = 0.5),axis.title.y=element_text(angle=0,vjust=1))
+
+ggplot(byState[byState$State != "SD",],aes(x=reorder(State,Median_IBU), y=Median_IBU)) + geom_bar(stat="identity") + 
+  coord_flip() +
+  labs(title = "Median Bitterness (IBU) by State", x="State", y="Median IBU") +
+  theme(legend.position = "none",plot.title = element_text(hjust = 0.5),axis.title.y=element_text(angle=0,vjust=1))
+```
+
+These graphs show the median ABV and IBU by state. Kentucky and DC produce the beers with the highest median alchohol by volume. Maine and West Virginia have the highest median bitterness. South Dakota did not have any bitterness observations.
+
+## 5.   Which state has the maximum alcoholic (ABV) beer? Which state has the most bitter (IBU) beer?
+```{r}
+#kable(brew_unique_val_count, col.names = c("Unique Count")) %>% kable_styling(full_width = FALSE)
+kable(combined[which.max(combined$ABV),]) %>% kable_styling(full_width = FALSE)
+kable(combined[which.max(combined$IBU),]) %>% kable_styling(full_width = FALSE)
+```
+
+Colorado produces the beer "Lee Hill Series Vol. 5"  with the highest alcohol content in our dataset at 12.8%. Oregon produces the beer "Bitter Bitch" which is the most bitter beer in our data set with an IBU of 138.
+
+## 6.   Summary statistics for the ABV variable. 
+```{r, fig.width=4, fig.height=4}
+kable(as.array(summary(combined$ABV)), digits = 3, col.names = c("Stat","Value")) %>% kable_styling(full_width = FALSE)
+ggplot(combined[!is.na(combined$ABV),], aes(x="", y=ABV)) +
+    geom_boxplot(alpha=0.4) +
+    stat_summary(fun.y=mean, geom="point", shape=20, size=10, color="red", fill="red") +
+  labs(x="", y="Alcohol by Volume") +
+  theme(legend.position = "none",axis.title.y=element_text(angle=0,vjust=1))
+```
+
+At least 75% of beers have a ABV of less than 6.7%
+
+## 7.   Is there an apparent relationship between the bitterness of the beer and its alcoholic content? Draw a scatter plot.
+```{r}
+ggplot(combined,aes(x=IBU,y=ABV)) + geom_point() + geom_smooth(method=lm, se=FALSE) +
+  labs(title = "Relationship between Alcohol Content and Bitterness", x="Bitterness", y="Alcohol by Volume") +
+  theme(legend.position = "none",plot.title = element_text(hjust = 0.5),axis.title.y=element_text(angle=0,vjust=1))
+```
+
+There is a positive relationship between Alcohol Content and Bitterness.
+
+## 8. MAPS!
+
+```{r}
+## Code derived from tutorial found at https://socviz.co/maps.html
+us_states <- map_data("state")
+us_states[us_states$region=="district of columbia","abb"] <- "DC"
+us_states$abb <- state.abb[match(us_states$region,tolower(state.name))]
+map_withBrew <- us_states %>% left_join(brewByState, by=c("abb" = "State")) %>% rename(BreweryCount = "count")
+start_map <- ggplot(data = map_withBrew,
+             mapping = aes(x = long, y = lat, group = group, fill = BreweryCount))
+map_2 <- start_map + geom_polygon(color = "gray90", size = 0.1) +
+  coord_map(projection = "albers", lat0 = 39, lat1 = 45) 
+
+map_2 + labs(title = "Brewery Count by State") + theme_map() + labs(fill = "Brewery Count") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+## 9. Conclusions
+
+### Colorado and California have the most craft breweries  
+### IPA and Pale Ale are the most popular styles  
+### Craft Beers tend to have alcohol content between 5% and 6.7%  
+### There is a positive relationship between alcohol content and bitterness in craft beers  
+### Lee Hill Series Volume 5 is the most alcoholic craft beer (12.8%)  
+### Bitter Bitch is the most bitter beer (138 IBU)  

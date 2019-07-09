@@ -1,0 +1,90 @@
+---
+title: "CaseStudy"
+author: "William Arnost"
+date: "6/19/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## 0. EDA
+```{r}
+setwd("C:/Users/William/OneDrive/MSDS_6306_DoingDataScience/MSDS_6306_Homework/CaseStudy01")
+library(tidyverse)
+library(DataExplorer)
+
+beers <- read_csv("Beers.csv")
+breweries <- read_csv("Breweries.csv")
+```
+
+```{r}
+plot_missing(beers)
+plot_missing(breweries)
+```
+
+```{r}
+beers_unique_val_count <- sapply(beers, function(x) length(unique(x)))
+beers_unique_val_count
+brew_unique_val_count <- sapply(breweries, function(x) length(unique(x)))
+brew_unique_val_count
+beers_missing_count <- sapply(beers, function(x) sum(is.na(x)))
+beers_missing_count
+brew_missing_count <- sapply(breweries, function(x) sum(is.na(x)))
+brew_missing_count
+```
+
+```{r}
+ggplot(beers, aes(x=ABV)) + geom_histogram()
+ggplot(beers, aes(x=IBU)) + geom_histogram()
+ggplot(beers, aes(as.character(Ounces))) + geom_bar()
+ggplot(beers, aes(Style)) + geom_bar() + coord_flip()
+ggplot(breweries, aes(State)) + geom_bar() + coord_flip()
+table(breweries$State)
+```
+
+```{r}
+combined <- beers %>% left_join(breweries, by = c("Brewery_id" = "Brew_ID"))
+byState <- combined %>% select(State, Brewery_id, ABV, IBU) %>% group_by(State) %>% 
+  summarise(Brewery_Count = n(), Median_ABV = median(ABV,na.rm=TRUE), Median_IBU = median(IBU,na.rm=TRUE), Max_ABV = max(ABV,na.rm=TRUE), Max_IBU = max(IBU,na.rm=TRUE))
+```
+## 1. How many breweries are present in each state?
+```{r}
+byState %>% select(State, Brewery_Count)
+```
+
+
+
+## 2. Merge beer data with the breweries data. Print the first 6 observations and the last six observations to check the merged file.
+```{r}
+## We did the merge in the EDA step
+head(combined,6)
+tail(combined,6)
+```
+
+## 3.   Report the number of NA's in each column.
+```{r}
+sapply(combined, function(x) sum(is.na(x)))
+```
+
+## 4.   Compute the median alcohol content and international bitterness unit for each state. Plot a bar chart to compare.
+```{r}
+ggplot(byState,aes(x=reorder(State,Median_ABV), y=Median_ABV)) + geom_bar(stat="identity") + coord_flip()
+ggplot(byState,aes(x=reorder(State,Median_IBU), y=Median_IBU)) + geom_bar(stat="identity") + coord_flip()
+```
+
+## 5.   Which state has the maximum alcoholic (ABV) beer? Which state has the most bitter (IBU) beer?
+```{r}
+byState[which.max(byState$Max_ABV),]
+byState[which.max(byState$Max_IBU),]
+```
+
+## 6.   Summary statistics for the ABV variable.
+```{r}
+summary(combined$ABV)
+```
+
+## 7.   Is there an apparent relationship between the bitterness of the beer and its alcoholic content? Draw a scatter plot.
+```{r}
+ggplot(combined,aes(x=IBU,y=ABV)) + geom_point() + geom_smooth(method=lm) 
+```
