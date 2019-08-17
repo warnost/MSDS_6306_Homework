@@ -1,0 +1,583 @@
+---
+title: "Case Study 2"
+date: "`r Sys.Date()`"
+author: "William Arnost"
+output:
+  rmdformats::readthedown:
+    highlight: kate
+    toc_depth: 3
+---
+
+
+```{r knitr_init, echo=FALSE, cache=FALSE}
+library(knitr)
+library(rmdformats)
+library(kableExtra)
+library(doParallel)
+
+workers <- makeCluster(12L)
+registerDoParallel(workers)
+
+## Global options
+options(max.print="75")
+opts_chunk$set(echo=TRUE,
+	             cache=FALSE,
+               prompt=FALSE,
+               tidy=TRUE,
+               comment=NA,
+               message=FALSE,
+               warning=FALSE)
+opts_knit$set(width=75)
+```
+
+## Data import  
+
+```{r import}
+library(tidyverse)
+casedata <-read_csv('CaseStudy2-data.csv')
+str(casedata)
+```
+
+The data set has 870 observations and 36 variables for us to work with.  
+
+## Check for missing data  
+```{r MissingData, warning=FALSE}
+library(Amelia)
+library(naniar)
+missmap(casedata,y.at=c(1),y.labels = c(''))
+gg_miss_var(casedata, show_pct=TRUE) + labs(title="Percent Missing by Data Field") +
+  theme(legend.position = "none",plot.title = element_text(hjust = 0.5),axis.title.y=element_text(angle=0,vjust=1))
+```
+
+There does not appear to be any missing data in the dataset.  
+
+## Pre-Processing
+
+Here I am doing some processing of the data. I am going to convert some character columns to factors to make modeling easier.
+```{r pre-processing}
+colsToFactor <- c("Attrition","BusinessTravel","Department","EducationField","Gender","JobRole","MaritalStatus","Over18","OverTime","StockOptionLevel","JobLevel","JobInvolvement","Education","EnvironmentSatisfaction","JobSatisfaction","RelationshipSatisfaction","WorkLifeBalance","PerformanceRating")
+# Consider "StockOptionLevel","JobLevel","JobInvolvement","Education"; They could be coded as numeric
+casedata[,colsToFactor] <- lapply(casedata[,colsToFactor], as.factor)
+
+casedata$logMonthlyIncome <- log(casedata$MonthlyIncome)
+
+casedata$IncomeLt4000 <- ifelse(casedata$MonthlyIncome <= 4000, 1, 0)
+casedata$Edu4 <- ifelse(casedata$Education == 4, 1, 0)
+casedata$Edu5 <- ifelse(casedata$Education == 5, 1, 0)
+casedata$EnvSat1 <- ifelse(casedata$EnvironmentSatisfaction == 1, 1, 0)
+casedata$StockOpt0 <- ifelse(casedata$StockOptionLevel == 0, 1, 0)
+casedata$StockOpt3 <- ifelse(casedata$StockOptionLevel == 3, 1, 0)
+casedata$StockOpt03 <- ifelse(casedata$StockOptionLevel %in% c(0,3), 1, 0)
+casedata$JobLev1 <- ifelse(casedata$JobLevel == 1, 1, 0)
+casedata$JobInv1 <- ifelse(casedata$JobInvolvement == 1, 1, 0)
+casedata$WorkLife1 <- ifelse(casedata$WorkLifeBalance == 1, 1, 0)
+casedata$DistHomeFactor <- as.factor(
+                                  case_when(casedata$DistanceFromHome <= 10 ~ "Close",
+                                     casedata$DistanceFromHome > 10 & casedata$DistanceFromHome <= 20 ~ "Medium",
+                                     casedata$DistanceFromHome > 20 ~ "Far")
+                                     )
+casedata$HourDay <- casedata$HourlyRate * 8
+```
+
+
+## Exploratory Analysis
+
+Lets start by looking at our dependent variables  
+
+### Helper Functions
+
+This section is just to create some functions to help with exploratory analysis.  
+```{r helper}
+barPlot <- function(df, x) {
+  ggplot(df, aes_string(x = x)) +
+    geom_bar() 
+}
+
+propPlot <- function(df, x, y) {
+  ggplot(df, aes_string(x = x, fill = y)) +
+    geom_bar(position = "fill") +
+    scale_y_continuous(labels = scales::percent)
+}
+
+fancyTable <- function(df, x) {
+  df %>% group_by_at(x) %>% 
+    summarise(Count = n(), Proportion = n()/dim(df)[1]) %>% 
+    kable() %>% kable_styling(full_width = FALSE)
+}
+
+vioPlot <- function(df, x, y) {
+  ggplot(df, aes_string(x = x, y = y, fill = x)) + geom_violin() + geom_boxplot(width = 0.20) + stat_summary(fun.y=mean, geom="point", shape=5, size=4, color = "black")
+}
+
+histPlot <- function(df, x){
+  ggplot(casedata,aes_string(x)) + geom_histogram(bins = 30) 
+}
+```
+
+### Attrition  
+```{r Attrition}
+fancyTable(casedata, "Attrition")
+barPlot(casedata, "Attrition")
+```
+
+Out of the 870 employees, 140 left their jobs, which is 16% attrition  
+
+### Monthly Income  
+
+```{r MonthlyIncome}
+ggplot(casedata,aes(MonthlyIncome)) + geom_histogram(aes(y=..density..), bins = 30) + 
+   stat_function(fun=dnorm,
+      color="red",
+      args=list(mean=mean(casedata$MonthlyIncome), 
+      sd=sd(casedata$MonthlyIncome))) 
+summary(casedata$MonthlyIncome)
+vioPlot(casedata, x = "Attrition",y="MonthlyIncome")
+```
+
+We have Monthly Incomes ranging from \$1,081 to \$19,999. Income is very right skewed, which will effect modeling. We probably want to transform it.  
+
+```{r logMonthlyIncome}
+ggplot(casedata,aes(logMonthlyIncome)) + geom_histogram(aes(y=..density..),bins = 30) + 
+  stat_function(fun=dnorm,
+      color="red",
+      args=list(mean=mean(casedata$logMonthlyIncome), 
+      sd=sd(casedata$logMonthlyIncome)))
+summary(casedata$logMonthlyIncome)
+```
+
+The log version of Monthly Income seems more normal but wasn't as good as I had hoped from the transformation.  
+
+### Age  
+
+```{r Age}
+histPlot(casedata, "Age")
+summary(casedata$Age)
+vioPlot(casedata, x = "Attrition",y="Age")
+ggplot(casedata, aes(x = Age, y = MonthlyIncome)) + geom_point()
+```
+
+### Business Travel  
+
+```{r BusinessTravel}
+fancyTable(casedata, "BusinessTravel")
+barPlot(casedata, "BusinessTravel")
+propPlot(casedata, x = "BusinessTravel","Attrition")
+vioPlot(casedata, x = "BusinessTravel",y="MonthlyIncome")
+```
+
+681 employees or 71% travel rarely. It seems like the most frequent travelers have the highest attrition rates, and non-travelers have the lowest. Non-travelers have a lower 75th percentile on income, Frequent and non-frequent travelers have similar pay.  
+
+### Department  
+
+```{r}
+fancyTable(casedata, "Department")
+barPlot(casedata, "Department")
+propPlot(casedata, x = "Department","Attrition")
+vioPlot(casedata, x = "Department",y="MonthlyIncome")
+```
+
+The sales department has the highest attrition rate and R&D has the lowest attrition rate. Mean income is fairly similar but their is a clear difference in medians with HR having the lowest median pay and Sales having the highest median pay.  
+
+### Education  
+
+```{r}
+fancyTable(casedata, "Education")
+barPlot(casedata, "Education")
+propPlot(casedata, x = "Education","Attrition")
+vioPlot(casedata, x = "Education",y="MonthlyIncome")
+```
+
+Assuming higher values of Education mean more advance education, better educated employees seem to have lower attrtion rates. 1-3 are similar but 4 & 5 have a clear decrease. Education 5 also has a very clear pay advantage.    
+
+```{r}
+fancyTable(casedata, "EducationField")
+barPlot(casedata, "EducationField")
+propPlot(casedata, x = "EducationField","Attrition")
+vioPlot(casedata, x = "EducationField",y="MonthlyIncome")
+```
+
+Those with education in HR have the highest attrition rates in this sample. Education in Human Resources seems to come with lower median pay, but those educated in marketing have higher median pay
+
+### Environment Satisfaction  
+
+```{r}
+fancyTable(casedata, "EnvironmentSatisfaction")
+barPlot(casedata, "EnvironmentSatisfaction")
+propPlot(casedata, x = "EnvironmentSatisfaction","Attrition")
+vioPlot(casedata, x = "EnvironmentSatisfaction",y="MonthlyIncome")
+```
+
+Assuming lower is less satisfied, those least satisfied with their enviroment have the highest attrition rates. Mean and Median pay is similar between groups here, but the 75th percentile is lower for groups 2&4. Not sure how this is meaningful to pay overall.  
+
+### Gender  
+
+```{r}
+fancyTable(casedata, "Gender")
+barPlot(casedata, "Gender")
+propPlot(casedata, x = "Gender","Attrition")
+vioPlot(casedata, x = "Gender",y="MonthlyIncome")
+```
+
+Attrition rates are similar between genders, with Men having just a slightly higher rate. In terms of pay, Men are making a little less than average in this sample. Lets look at some other cuts to see if there is any deeper story.
+
+```{r}
+vioPlot(casedata, x = "Gender",y="MonthlyIncome") + facet_wrap(~ Department)
+```
+
+Men have a little better median pay in the Sales department.  
+
+```{r}
+vioPlot(casedata, x = "Gender",y="MonthlyIncome") + facet_wrap(~ EducationField)
+```
+
+In terms of mean and median pay, men rarely have an advantage regardless of education field.  
+
+
+### Job Involvement  
+
+```{r JobInvolve}
+fancyTable(casedata, "JobInvolvement")
+barPlot(casedata, "JobInvolvement")
+propPlot(casedata, x = "JobInvolvement","Attrition")
+vioPlot(casedata, x = "JobInvolvement",y="MonthlyIncome")
+```
+
+Those with lower job involvement have much higher attrition. The relationship with pay is much less clear.   
+
+### Job Level  
+
+```{r JobLevel}
+fancyTable(casedata, "JobLevel")
+barPlot(casedata, "JobLevel")
+propPlot(casedata, x = "JobLevel","Attrition")
+vioPlot(casedata, x = "JobLevel",y="MonthlyIncome")
+```
+
+Job level 1 has a much higher attrition rate. Job level also seems very linearly associated with pay.  
+
+### Job Role  
+
+```{r JobRole}
+fancyTable(casedata, "JobRole")
+barPlot(casedata, "JobRole") + theme(axis.text.x = element_text(angle = 90))
+propPlot(casedata, x = "JobRole","Attrition") + theme(axis.text.x = element_text(angle = 90))
+vioPlot(casedata, x = "JobRole",y="MonthlyIncome") + theme(axis.text.x = element_text(angle = 90))
+```
+
+Sales Representatives have the highest attrition rate by far. Managers and Research Directors have the highest pay and low attrition rates.  
+
+### Job Satisfaction  
+
+```{r JobSatisfaction}
+fancyTable(casedata, "JobSatisfaction")
+barPlot(casedata, "JobSatisfaction")
+propPlot(casedata, x = "JobSatisfaction","Attrition")
+vioPlot(casedata, x = "JobSatisfaction",y="MonthlyIncome")
+```
+
+### MaritalStatus  
+
+```{r}
+fancyTable(casedata, "MaritalStatus")
+barPlot(casedata, "MaritalStatus")
+propPlot(casedata, x = "MaritalStatus","Attrition")
+vioPlot(casedata, x = "MaritalStatus",y="MonthlyIncome")
+```
+
+Single employees have the highest attrition and below average pay.
+
+### Over18  
+
+```{r}
+fancyTable(casedata, "Over18")
+```
+
+This seems to be an indicator for the employee being over 18, and 100% of our sample falls into this category. Since there is no variance in this variable it would not be useful for modeling so I am omitting any further analysis.  
+
+### Over Time   
+
+```{r}
+fancyTable(casedata, "OverTime")
+barPlot(casedata, "OverTime")
+propPlot(casedata, x = "OverTime","Attrition")
+vioPlot(casedata, x = "OverTime",y="MonthlyIncome")
+```
+
+Overtime eligible employees have much higher attrition rates and slightly lower monthly income.
+
+### Stock Option Level  
+
+```{r}
+fancyTable(casedata, "StockOptionLevel")
+barPlot(casedata, "StockOptionLevel")
+propPlot(casedata, x = "StockOptionLevel","Attrition")
+vioPlot(casedata, x = "StockOptionLevel",y="MonthlyIncome")
+```
+
+Most employees fall in Stock Option level 0 or 1, with much fewer in 2 & 3. Stock option levels 0 & 3 have the highest attrition, with 1 & 2 being much lower. Perhaps 1 & 2 have more long term incentives to keep employees at the firm. 1 & 2 also have higher median / average pay.
+
+### Relationship Satisfaction
+
+```{r}
+fancyTable(casedata, "RelationshipSatisfaction")
+barPlot(casedata, "RelationshipSatisfaction")
+propPlot(casedata, x = "RelationshipSatisfaction","Attrition")
+vioPlot(casedata, x = "RelationshipSatisfaction",y="MonthlyIncome")
+```
+
+
+### Work Life Balance
+
+```{r}
+fancyTable(casedata, "WorkLifeBalance")
+barPlot(casedata, "WorkLifeBalance")
+propPlot(casedata, x = "WorkLifeBalance","Attrition")
+vioPlot(casedata, x = "WorkLifeBalance",y="MonthlyIncome")
+```
+
+
+### Daily Rate  and Hourly Rate  
+
+```{r}
+histPlot(casedata, "DailyRate")
+summary(casedata$DailyRate)
+vioPlot(casedata, x = "Attrition",y="DailyRate")
+ggplot(casedata, aes(x = DailyRate, y = MonthlyIncome)) + geom_point()
+```
+
+I am not seeing any meaningful relationship to attrition or Monthly Income for Daily Rate  
+
+```{r}
+histPlot(casedata, "HourlyRate") 
+summary(casedata$HourlyRate)
+vioPlot(casedata, x = "Attrition",y="HourlyRate")
+ggplot(casedata, aes(x = HourlyRate, y = MonthlyIncome)) + geom_point()
+ggplot(casedata, aes(x = HourlyRate, y = DailyRate)) + geom_point()
+ggplot(casedata, aes(x = HourlyRate, y = MonthlyRate)) + geom_point()
+ggplot(casedata, aes(x = MonthlyIncome, y = MonthlyRate)) + geom_point()
+```
+
+I am not seeing any meaningful relationship to attrition or Monthly Income for Hourly Rate, and Hourly Rate doesn't seem related to Daily Rate. I would normally assoicate Hourly/Daily rates with income but in this case either this is not true or somehow doesn't translate to monthly income. I will probably ignore these.  
+
+
+### Distance From Home  
+
+```{r}
+histPlot(casedata, "DistanceFromHome")
+summary(casedata$DistanceFromHome)
+vioPlot(casedata, x = "Attrition",y="DistanceFromHome")
+ggplot(casedata, aes(x = DistanceFromHome, y = MonthlyIncome)) + geom_point()
+```
+
+### Distance From Home  
+
+```{r}
+fancyTable(casedata, "DistHomeFactor")
+barPlot(casedata, "DistHomeFactor")
+propPlot(casedata, x = "DistHomeFactor","Attrition")
+vioPlot(casedata, x = "DistHomeFactor",y="MonthlyIncome")
+```
+
+Those who attrite work farther from home, on average.  
+
+### Num Companies Worked  
+
+```{r}
+histPlot(casedata, "NumCompaniesWorked") 
+summary(casedata$NumCompaniesWorked)
+vioPlot(casedata, x = "Attrition",y="NumCompaniesWorked")
+ggplot(casedata, aes(x = NumCompaniesWorked, y = MonthlyIncome)) + geom_point()
+```
+
+It seems like those that attrite have worked at fewer companies?  
+
+### Salary Hike
+
+```{r}
+histPlot(casedata, "PercentSalaryHike") 
+summary(casedata$PercentSalaryHike)
+vioPlot(casedata, x = "Attrition",y="PercentSalaryHike")
+ggplot(casedata, aes(x = PercentSalaryHike, y = MonthlyIncome)) + geom_point()
+```
+
+### Performance Rating
+
+```{r}
+fancyTable(casedata, "PerformanceRating")
+barPlot(casedata, "PerformanceRating")
+propPlot(casedata, x = "PerformanceRating","Attrition")
+vioPlot(casedata, x = "PerformanceRating",y="MonthlyIncome")
+```
+
+### StandardHours
+
+```{r}
+histPlot(casedata, "StandardHours")
+summary(casedata$StandardHours)
+vioPlot(casedata, x = "Attrition",y="StandardHours")
+ggplot(casedata, aes(x = StandardHours, y = MonthlyIncome)) + geom_point()
+```
+
+
+### TotalWorkingYears
+
+```{r}
+histPlot(casedata, "TotalWorkingYears")
+summary(casedata$TotalWorkingYears)
+vioPlot(casedata, x = "Attrition",y="TotalWorkingYears")
+ggplot(casedata, aes(x = TotalWorkingYears, y = MonthlyIncome)) + geom_point()
+```
+
+### TrainingTimesLastYear
+
+```{r}
+histPlot(casedata, "TrainingTimesLastYear")
+summary(casedata$TrainingTimesLastYear)
+vioPlot(casedata, x = "Attrition",y="TrainingTimesLastYear")
+ggplot(casedata, aes(x = TrainingTimesLastYear, y = MonthlyIncome)) + geom_point()
+```
+
+### YearsAtCompany
+
+```{r}
+histPlot(casedata, "YearsAtCompany")
+summary(casedata$YearsAtCompany)
+vioPlot(casedata, x = "Attrition",y="YearsAtCompany")
+ggplot(casedata, aes(x = YearsAtCompany, y = MonthlyIncome)) + geom_point()
+```
+
+### YearsInCurrentRole
+
+```{r}
+histPlot(casedata, "YearsInCurrentRole")
+summary(casedata$YearsInCurrentRole)
+vioPlot(casedata, x = "Attrition",y="YearsInCurrentRole")
+ggplot(casedata, aes(x = YearsInCurrentRole, y = MonthlyIncome)) + geom_point()
+```
+
+### YearsSinceLastPromotion
+
+```{r}
+histPlot(casedata, "YearsSinceLastPromotion")
+summary(casedata$YearsSinceLastPromotion)
+vioPlot(casedata, x = "Attrition",y="YearsSinceLastPromotion")
+ggplot(casedata, aes(x = YearsSinceLastPromotion, y = MonthlyIncome)) + geom_point()
+```
+
+### YearsWithCurrManager
+
+```{r}
+histPlot(casedata, "YearsWithCurrManager")
+summary(casedata$YearsWithCurrManager)
+vioPlot(casedata, x = "Attrition",y="YearsWithCurrManager")
+ggplot(casedata, aes(x = YearsWithCurrManager, y = MonthlyIncome)) + geom_point()
+```
+
+### ID, Employee Number, Employee Count  
+
+```{r}
+summary(casedata$EmployeeCount)
+n_distinct(casedata$ID)
+n_distinct(casedata$EmployeeNumber)
+```
+
+These are quick checks to make sure each row represents one employee, and no employees have more than one observation. Employee Count never takes a value other than one, so each row is one employee. ID and Employee number are unique, there are no repeats, so no employee has more than one observation.  
+
+
+
+
+
+
+## Train/Test Split  
+```{r}
+library(caret)
+set.seed(42)
+train_ind <- createDataPartition(y = casedata$ID, 
+                               p = 0.8, 
+                               list = FALSE)
+train.data <- casedata[train_ind,]
+test.data <- casedata[-train_ind,]
+
+```
+
+## Linear Model
+```{r LinearModel}
+
+#fit<-lm(data = train, MonthlyIncome ~ ID)
+#broom::tidy(fit)
+#RMSE(fit$fitted.values,train$MonthlyIncome)
+#pred <- predict(fit,test)
+#RMSE(pred, test$MonthlyIncome)
+```
+
+## Naive Bayes
+
+Lets quick try a model with everything in it.
+```{r NaiveBayes01}
+colsToDrop <- c("ID","EmployeeNumber","EmployeeCount","Over18","StandardHours","DailyRate","HourlyRate","MonthlyRate")
+colsToDrop2 <- names(casedata)[c(37:length(casedata))]
+nb.train.01 <- train.data %>% select(-c(colsToDrop,colsToDrop2))
+
+trnCtrl <- trainControl( method = "repeatedcv", 
+                         number = 10, repeats = 5,
+                         summaryFunction = twoClassSummary,
+                         classProbs = TRUE)
+
+fit.nb <- train(Attrition ~ ., data = nb.train.01, method = "naive_bayes", metric = "Spec", trControl = trnCtrl)
+pred <- predict(fit.nb, test.data)
+
+confusionMatrix(pred,test.data$Attrition, positive = "Yes")
+F_meas(pred,test.data$Attrition)
+```
+
+Not too bad. Specificity is just under the desired threshold.
+
+
+```{r NaiveBayes02}
+fit.nb.02 <- train(Attrition ~ OverTime + MaritalStatus + StockOptionLevel, 
+                   data = nb.train.01, 
+                   method = "naive_bayes", 
+                   metric = "Spec", 
+                   trControl = trnCtrl)
+pred.02 <- predict(fit.nb.02, test.data)
+
+confusionMatrix(pred.02,test.data$Attrition, positive = "Yes")
+F_meas(pred.02,test.data$Attrition)
+```
+
+```{r NaiveBayes03}
+fit.nb.03 <- train(Attrition ~ OverTime + MaritalStatus + StockOptionLevel + JobLevel, 
+                   data = nb.train.01, 
+                   method = "naive_bayes", 
+                   metric = "Spec", 
+                   trControl = trnCtrl)
+pred.03 <- predict(fit.nb.03, test.data)
+
+confusionMatrix(pred.03,test.data$Attrition, positive = "Yes")
+F_meas(pred.03,test.data$Attrition)
+```
+
+```{r NaiveBayes04}
+fit.nb.04 <- train(Attrition ~ OverTime + MaritalStatus + StockOptionLevel + JobLevel + YearsInCurrentRole, 
+                   data = nb.train.01, 
+                   method = "naive_bayes", 
+                   metric = "Spec", 
+                   trControl = trnCtrl)
+pred.04 <- predict(fit.nb.04, test.data)
+
+confusionMatrix(pred.04,test.data$Attrition, positive = "Yes")
+F_meas(pred.04,test.data$Attrition)
+```
+
+```{r NaiveBayes05}
+nb.train.02 <- train.data %>% select(-c(colsToDrop))
+fit.nb.05 <- train(Attrition ~ OverTime + MaritalStatus + StockOptionLevel + JobLevel + YearsInCurrentRole + IncomeLt4000, 
+                   data = nb.train.02, 
+                   method = "naive_bayes", 
+                   metric = "Spec", 
+                   trControl = trnCtrl)
+pred.05 <- predict(fit.nb.05, test.data)
+
+confusionMatrix(pred.05,test.data$Attrition, positive = "Yes")
+F_meas(pred.05,test.data$Attrition)
+```
